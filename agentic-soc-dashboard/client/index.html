@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Security Operations – Agentic SOC Dashboard</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+
+<body>
+  <!-- TOP BAR -->
+  <header class="topbar">
+    <div>
+      <div class="brand-title">Security Operations</div>
+      <div class="brand-sub">Agentic SOC Dashboard</div>
+    </div>
+
+    <div class="topbar-actions">
+      <button id="btnReset" class="btn">Reset telemetry</button>
+      <button id="btnPause" class="btn">Pause</button>
+    </div>
+  </header>
+
+  <!-- APP SHELL -->
+  <div class="app">
+
+    <!-- SIDEBAR -->
+    <aside class="sidebar">
+      <nav class="nav">
+        <a class="nav-item" href="#overview" data-route="overview">Overview</a>
+        <a class="nav-item" href="#alerts" data-route="alerts">Alerts</a>
+        <a class="nav-item" href="#investigations" data-route="investigations">Investigations</a>
+        <a class="nav-item" href="#settings" data-route="settings">Settings</a>
+      </nav>
+
+      <div class="sidebar-foot muted">
+        SOC simulation · live agent
+      </div>
+    </aside>
+
+    <!-- MAIN CONTENT -->
+    <main class="content">
+
+      <!-- ================= OVERVIEW ================= -->
+      <section id="page-overview" class="page">
+        <section class="grid">
+
+          <!-- KPI CARD (FULL WIDTH) -->
+          <div class="card kpis">
+            <div class="card-head">
+              <div class="card-title">Alert Severity</div>
+              <div class="muted">Totals update from the agent state in real time.</div>
+            </div>
+
+            <div class="kpi-row">
+              <div class="kpi">
+                <div class="kpi-label">Critical</div>
+                <div id="kpiCritical" class="kpi-value">0</div>
+              </div>
+              <div class="kpi">
+                <div class="kpi-label">High</div>
+                <div id="kpiHigh" class="kpi-value">0</div>
+              </div>
+              <div class="kpi">
+                <div class="kpi-label">Medium</div>
+                <div id="kpiMedium" class="kpi-value">0</div>
+              </div>
+              <div class="kpi">
+                <div class="kpi-label">Low</div>
+                <div id="kpiLow" class="kpi-value">0</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ALERTS (TOP LEFT) -->
+          <div class="card alerts-card" id="card-alerts">
+            <div class="card-head">
+              <div class="card-title">Alerts</div>
+              <div class="muted">Most recent first</div>
+            </div>
+
+            <div id="alerts" class="alerts"></div>
+          </div>
+
+          <!-- THREAT TREND (TOP RIGHT) -->
+          <div class="card chart-card" id="card-threat">
+            <div class="card-head">
+              <div class="card-title">Threat Activity Trend</div>
+              <div class="muted">Attack-tagged telemetry, binned per minute</div>
+            </div>
+
+            <div id="threatPressure" class="metricline muted"></div>
+            <svg id="trendThreat" class="trend-svg"></svg>
+          </div>
+
+          <!-- INVESTIGATIONS (BOTTOM LEFT) -->
+          <div class="card investigations-card" id="card-investigations">
+            <div class="card-head">
+              <div class="card-title">Investigations</div>
+              <div class="muted">Grouped by attacker IP</div>
+            </div>
+
+            <div class="table-wrap">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th>Created</th>
+                    <th>Title</th>
+                    <th>Severity</th>
+                    <th>Entity</th>
+                  </tr>
+                </thead>
+                <tbody id="investigationsBody"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- BASELINE TREND (BOTTOM RIGHT) -->
+          <div class="card chart-card" id="card-baseline">
+            <div class="card-head">
+              <div class="card-title">Baseline Auth Activity</div>
+              <div class="muted">Home-IP auth success volume, binned per minute</div>
+            </div>
+
+            <svg id="trendBaseline" class="trend-svg"></svg>
+          </div>
+
+        </section>
+      </section>
+
+      <!-- ================= ALERTS PAGE ================= -->
+      <section id="page-alerts" class="page">
+        <div class="page-head">
+          <div>
+            <div class="page-title">Alerts</div>
+            <div class="muted">SOC queue: search, filter, sort, and review details</div>
+          </div>
+        </div>
+
+        <div class="alerts-layout">
+          <!-- LEFT: TABLE -->
+          <div class="card">
+            <div class="alerts-controls">
+              <input id="alertsSearch" class="input" placeholder="Search IP, user, type, explanation..." />
+
+              <select id="alertsSeverity" class="select">
+                <option value="ALL">All severities</option>
+                <option value="CRITICAL">Critical</option>
+                <option value="HIGH">High</option>
+                <option value="MEDIUM">Medium</option>
+                <option value="LOW">Low</option>
+              </select>
+
+              <select id="alertsSort" class="select">
+                <option value="NEWEST" selected>Newest first</option>
+                <option value="OLDEST">Oldest first</option>
+                <option value="SEV_DESC">Severity: high → low</option>
+                <option value="SEV_ASC">Severity: low → high</option>
+              </select>
+            </div>
+
+            <div class="table-wrap alerts-table-wrap">
+              <table class="table alerts-table">
+                <thead>
+                  <tr>
+                    <th>Time</th>
+                    <th>Severity</th>
+                    <th>Type</th>
+                    <th>User</th>
+                    <th>IP</th>
+                    <th>Summary</th>
+                  </tr>
+                </thead>
+                <tbody id="alertsTableBody"></tbody>
+              </table>
+            </div>
+
+            <div class="muted" style="margin-top:10px;">
+              Tip: click a row to view full details.
+            </div>
+          </div>
+
+          <!-- RIGHT: DETAILS -->
+          <div class="card" id="alertDetailsCard">
+            <div class="card-head">
+              <div class="card-title">Alert details</div>
+              <div class="muted" id="alertDetailsMeta">Select an alert</div>
+            </div>
+
+            <div id="alertDetails" class="details">
+              <div class="muted">No alert selected.</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= INVESTIGATIONS PAGE ================= -->
+      <section id="page-investigations" class="page">
+        <div class="page-head">
+          <div>
+            <div class="page-title">Investigations</div>
+            <div class="muted">Case queue grouped by attacker IP (campaign-level view)</div>
+          </div>
+        </div>
+
+        <div class="investigations-layout">
+          <!-- LEFT: QUEUE -->
+          <div class="card">
+            <div class="alerts-controls">
+              <input id="invSearch" class="input" placeholder="Search IP, victims, title..." />
+
+              <select id="invSeverity" class="select">
+                <option value="ALL">All severities</option>
+                <option value="CRITICAL">Critical</option>
+                <option value="HIGH">High</option>
+                <option value="MEDIUM">Medium</option>
+                <option value="LOW">Low</option>
+              </select>
+
+              <select id="invStatus" class="select">
+                <option value="ALL" selected>All statuses</option>
+                <option value="OPEN">Open</option>
+                <option value="MONITORING">Monitoring</option>
+                <option value="CONTAINED">Contained</option>
+                <option value="CLOSED">Closed</option>
+              </select>
+
+              <select id="invSort" class="select">
+                <option value="LAST_SEEN" selected>Last seen</option>
+                <option value="CREATED">Created</option>
+                <option value="SEV_DESC">Severity: high → low</option>
+                <option value="SEV_ASC">Severity: low → high</option>
+              </select>
+            </div>
+
+            <div class="table-wrap inv-table-wrap">
+              <table class="table inv-table">
+                <thead>
+                  <tr>
+                    <th>Last seen</th>
+                    <th>Severity</th>
+                    <th>Attacker</th>
+                    <th>Victims</th>
+                    <th>Hits</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody id="invTableBody"></tbody>
+              </table>
+            </div>
+
+            <div class="muted" style="margin-top:10px;">
+              Tip: click a case to view full campaign details.
+            </div>
+          </div>
+
+          <!-- RIGHT: DETAILS -->
+          <div class="card" id="invDetailsCard">
+            <div class="card-head">
+              <div class="card-title">Investigation details</div>
+              <div class="muted" id="invDetailsMeta">Select a case</div>
+            </div>
+
+            <div id="invDetails" class="details">
+              <div class="muted">No investigation selected.</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= SETTINGS ================= -->
+      <section id="page-settings" class="page">
+        <div class="page-head">
+          <div>
+            <div class="page-title">Settings</div>
+            <div class="muted">Tune thresholds, windows, and attack pacing</div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="muted">We’ll build this page next.</div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- D3 -->
+  <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+
+  <!-- APP ENTRY -->
+  <script type="module" src="./main.js"></script>
+</body>
+</html>
