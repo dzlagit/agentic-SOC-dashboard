@@ -12,6 +12,8 @@ import {
 } from "./ui.js";
 import { renderTrends } from "./trends.js";
 
+import { settings, updateSettings, resetSettings } from "./settings.js";
+
 let since = 0;
 const API = "http://localhost:3001/events";
 const RESET_API = "http://localhost:3001/reset";
@@ -20,7 +22,7 @@ let paused = false;
 
 /* ---------------- Routing ---------------- */
 
-const ROUTES = ["overview", "alerts", "investigations", "entities", "settings"];
+const ROUTES = ["overview", "alerts", "investigations", "settings"];
 
 function getRouteFromHash() {
   const raw = (location.hash || "#overview").replace("#", "").trim().toLowerCase();
@@ -43,13 +45,141 @@ function initRouter() {
   setActiveRoute(getRouteFromHash());
   window.addEventListener("hashchange", () => {
     setActiveRoute(getRouteFromHash());
-    renderCurrentView();
+    renderCurrentView(true);
   });
+}
+
+/* ---------------- Settings UI ---------------- */
+
+let settingsBound = false;
+let settingsEditing = false; // user is currently interacting with sliders/inputs
+
+function setText(id, value) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = String(value);
+}
+
+function setInputValue(id, value) {
+  const el = document.getElementById(id);
+  if (el) el.value = String(value);
+}
+
+function getNum(id) {
+  const el = document.getElementById(id);
+  if (!el) return NaN;
+  return Number(el.value);
+}
+
+function setStatus(msg) {
+  const el = document.getElementById("settingsStatus");
+  if (!el) return;
+  el.textContent = msg || "";
+  if (msg) setTimeout(() => (el.textContent = ""), 1600);
+}
+
+function syncSettingsFormFromState() {
+  // sliders
+  setInputValue("setWindow", settings.windowSeconds);
+  setInputValue("setDedup", settings.dedupSeconds);
+  setInputValue("setBrute", settings.bruteForceFails);
+  setInputValue("setRecon", settings.reconConnAttempts);
+  setInputValue("setReads", settings.sensitiveReads);
+  setInputValue("setExfil", settings.exfilBytes);
+
+  // value labels
+  setText("valWindow", settings.windowSeconds);
+  setText("valDedup", settings.dedupSeconds);
+  setText("valBrute", settings.bruteForceFails);
+  setText("valRecon", settings.reconConnAttempts);
+  setText("valReads", settings.sensitiveReads);
+  setText("valExfil", settings.exfilBytes);
+}
+
+function isSettingsControlFocused() {
+  const a = document.activeElement;
+  if (!a) return false;
+  const ids = new Set(["setWindow", "setDedup", "setBrute", "setRecon", "setReads", "setExfil"]);
+  return ids.has(a.id);
+}
+
+function bindSettingsUI() {
+  if (settingsBound) return;
+  settingsBound = true;
+
+  const ids = [
+    ["setWindow", "valWindow"],
+    ["setDedup", "valDedup"],
+    ["setBrute", "valBrute"],
+    ["setRecon", "valRecon"],
+    ["setReads", "valReads"],
+    ["setExfil", "valExfil"],
+  ];
+
+  for (const [inputId, labelId] of ids) {
+    const input = document.getElementById(inputId);
+    if (!input) continue;
+
+    // when user starts interacting, we stop auto-syncing values
+    input.addEventListener("pointerdown", () => {
+      settingsEditing = true;
+    });
+
+    input.addEventListener("focus", () => {
+      settingsEditing = true;
+    });
+
+    // live label update while dragging
+    input.addEventListener("input", () => {
+      setText(labelId, input.value);
+    });
+
+    // when user finishes interaction, we allow sync again
+    input.addEventListener("pointerup", () => {
+      settingsEditing = false;
+    });
+
+    input.addEventListener("blur", () => {
+      // if they tabbed away, let future sync happen
+      settingsEditing = false;
+    });
+  }
+
+  const btnApply = document.getElementById("btnApplySettings");
+  if (btnApply) {
+    btnApply.addEventListener("click", () => {
+      updateSettings({
+        windowSeconds: getNum("setWindow"),
+        dedupSeconds: getNum("setDedup"),
+        bruteForceFails: getNum("setBrute"),
+        reconConnAttempts: getNum("setRecon"),
+        sensitiveReads: getNum("setReads"),
+        exfilBytes: getNum("setExfil"),
+      });
+
+      // after apply, reflect canonical clamped values
+      settingsEditing = false;
+      syncSettingsFormFromState();
+      setStatus("Saved.");
+
+      renderCurrentView(false);
+    });
+  }
+
+  const btnReset = document.getElementById("btnResetSettings");
+  if (btnReset) {
+    btnReset.addEventListener("click", () => {
+      resetSettings();
+      settingsEditing = false;
+      syncSettingsFormFromState();
+      setStatus("Restored defaults.");
+      renderCurrentView(false);
+    });
+  }
 }
 
 /* ---------------- Render ---------------- */
 
-function renderCurrentView() {
+function renderCurrentView(forceSyncSettings = false) {
   const state = getAgentState();
   const route = getRouteFromHash();
 
@@ -73,7 +203,19 @@ function renderCurrentView() {
     return;
   }
 
-  // other pages next
+  if (route === "settings") {
+    bindSettingsUI();
+
+    // Only sync values if:
+    // - we just navigated here (forceSyncSettings), or
+    // - user isn't actively editing (prevents sliders snapping back)
+    const editing = settingsEditing || isSettingsControlFocused();
+    if (forceSyncSettings || !editing) {
+      syncSettingsFormFromState();
+    }
+
+    return;
+  }
 }
 
 /* ---------------- Poll ---------------- */
@@ -88,7 +230,9 @@ async function poll() {
   if (data.events.length > 0) {
     since = data.latestId;
     agentStep(data.events);
-    renderCurrentView();
+
+    // Keep UI live, but do NOT stomp Settings interactions
+    renderCurrentView(false);
   }
 }
 
@@ -110,6 +254,7 @@ function initControls() {
       since = 0;
 
       const state = getAgentState();
+
       state.events.length = 0;
       state.alerts.length = 0;
       state.investigations.length = 0;
@@ -122,14 +267,16 @@ function initControls() {
       if (state.lastAlertKeyTs?.clear) state.lastAlertKeyTs.clear();
       if (state.stageByIpUser?.clear) state.stageByIpUser.clear();
 
-      renderCurrentView();
+      renderCurrentView(false);
     });
   }
 }
 
 initRouter();
 initControls();
-renderCurrentView();
+
+// first paint: force sync settings if user starts on settings
+renderCurrentView(true);
 
 setInterval(() => {
   poll().catch((e) => console.error(e));

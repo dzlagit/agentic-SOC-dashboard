@@ -1,38 +1,33 @@
 // client/trends.js
-// Two clean trend charts:
-// - Threat Activity Trend: attack-tagged events per minute
-// - Baseline Auth Activity: home-tagged auth_success per minute
-// Adds:
-// - Threat Pressure metric
-// - Baseline mean reference line on Threat chart
-// - Drops final partial bin (<50%) to avoid end-of-chart dip
+// Clean, stable line-based trend charts
+// - Threat Activity Trend: attack-tagged events (20s bins)
+// - Baseline Auth Activity: home-IP auth_success (20s bins)
+// - Drops final partial bin (<50%) to avoid false dips
 
 function makeBins({ start, end, binMs }) {
-  const n = Math.floor((end - start) / binMs) + 1;
   const bins = [];
-  for (let i = 0; i < n; i++) {
-    bins.push({ t: start + i * binMs, v: 0 });
+  for (let t = start; t < end; t += binMs) {
+    bins.push({ t, v: 0 });
   }
   return bins;
 }
 
 function binIndex(ts, start, binMs, nBins) {
   const idx = Math.floor((ts - start) / binMs);
-  if (idx < 0 || idx >= nBins) return -1;
-  return idx;
+  return idx >= 0 && idx < nBins ? idx : -1;
 }
 
-function renderLineChart(svgId, points, opts) {
+function renderLineChart(svgId, points, opts = {}) {
   const svg = d3.select(`#${svgId}`);
   const node = svg.node();
 
-  const width = node?.clientWidth ? node.clientWidth : 520;
+  const width = node?.clientWidth || 520;
   const height = 220;
 
   svg.attr("width", width).attr("height", height);
   svg.selectAll("*").remove();
 
-  const padding = { left: 46, right: 14, top: 12, bottom: 26 };
+  const padding = { left: 48, right: 16, top: 12, bottom: 28 };
 
   const x = d3
     .scaleTime()
@@ -51,7 +46,7 @@ function renderLineChart(svgId, points, opts) {
     .nice()
     .range([height - padding.bottom, padding.top]);
 
-  // gridlines
+  // Gridlines
   svg
     .append("g")
     .selectAll("line")
@@ -64,8 +59,9 @@ function renderLineChart(svgId, points, opts) {
     .attr("y1", (d) => y(d))
     .attr("y2", (d) => y(d));
 
-  // axes
-  const fmt = d3.timeFormat("%H:%M");
+  // Axes
+  const fmt = d3.timeFormat("%H:%M:%S");
+
   svg
     .append("g")
     .attr("transform", `translate(0,${height - padding.bottom})`)
@@ -76,7 +72,7 @@ function renderLineChart(svgId, points, opts) {
     .attr("transform", `translate(${padding.left},0)`)
     .call(d3.axisLeft(y).ticks(4));
 
-  // reference line (baseline mean)
+  // Reference line (baseline mean)
   if (opts.referenceLine !== undefined) {
     svg
       .append("line")
@@ -98,7 +94,6 @@ function renderLineChart(svgId, points, opts) {
       .text("Baseline mean");
   }
 
-  // line
   const line = d3
     .line()
     .x((d) => x(d.t))
@@ -113,7 +108,6 @@ function renderLineChart(svgId, points, opts) {
     .attr("stroke-width", 2)
     .attr("d", line);
 
-  // dots
   svg
     .selectAll("circle.pt")
     .data(points)
@@ -123,7 +117,7 @@ function renderLineChart(svgId, points, opts) {
     .attr("cx", (d) => x(d.t))
     .attr("cy", (d) => y(d.v))
     .attr("r", 2.5)
-    .attr("opacity", 0.75)
+    .attr("opacity", 0.8)
     .attr("fill", "rgba(230,237,243,0.85)");
 }
 
@@ -131,43 +125,44 @@ function setThreatPressureLine({ threatNow, baseNow }) {
   const el = document.getElementById("threatPressure");
   if (!el) return;
 
-  let ratioText = "—";
-  if (baseNow > 0) ratioText = (threatNow / baseNow).toFixed(2) + "×";
-  else if (threatNow > 0) ratioText = "∞";
+  let ratio = "—";
+  if (baseNow > 0) ratio = (threatNow / baseNow).toFixed(2) + "×";
+  else if (threatNow > 0) ratio = "∞";
 
   el.textContent =
-    `Threat Pressure (latest full minute): ${ratioText}` +
-    `  ·  threat/min ${threatNow}  ·  baseline/min ${baseNow}`;
+    `Threat pressure (latest full bin): ${ratio}` +
+    ` · threat/bin ${threatNow} · baseline/bin ${baseNow}`;
 }
 
 export function renderTrends(events) {
   const now = Date.now();
-  const minutes = 12;
-  const start = now - minutes * 60_000;
+
+  const BIN_MS = 20_000; // ✅ 20 second bins
+  const WINDOW_MS = 4 * 60_000; // 4 minutes visible
+
+  const start = now - WINDOW_MS;
   const end = now;
-  const binMs = 60_000;
 
-  const elapsedInLastBin = (now - start) % binMs;
-  const lastBinCompleteness = elapsedInLastBin / binMs;
-
-  const threatBins = makeBins({ start, end, binMs });
-  const baseBins = makeBins({ start, end, binMs });
+  const threatBins = makeBins({ start, end, binMs: BIN_MS });
+  const baseBins = makeBins({ start, end, binMs: BIN_MS });
 
   for (const e of events) {
     if (!e.ts || e.ts < start) continue;
 
     if (e.meta?.attack) {
-      const idx = binIndex(e.ts, start, binMs, threatBins.length);
-      if (idx !== -1) threatBins[idx].v += 1;
+      const i = binIndex(e.ts, start, BIN_MS, threatBins.length);
+      if (i !== -1) threatBins[i].v += 1;
     }
 
     if (e.meta?.home && e.type === "auth_success") {
-      const idx = binIndex(e.ts, start, binMs, baseBins.length);
-      if (idx !== -1) baseBins[idx].v += 1;
+      const i = binIndex(e.ts, start, BIN_MS, baseBins.length);
+      if (i !== -1) baseBins[i].v += 1;
     }
   }
 
-  if (lastBinCompleteness < 0.5) {
+  // Drop final bin if <50% complete
+  const elapsed = (now - start) % BIN_MS;
+  if (elapsed / BIN_MS < 0.5) {
     threatBins.pop();
     baseBins.pop();
   }
@@ -177,7 +172,7 @@ export function renderTrends(events) {
   setThreatPressureLine({ threatNow, baseNow });
 
   const baselineMean =
-    baseBins.reduce((sum, b) => sum + b.v, 0) / Math.max(1, baseBins.length);
+    baseBins.reduce((s, b) => s + b.v, 0) / Math.max(1, baseBins.length);
 
   renderLineChart("trendThreat", threatBins, {
     start,

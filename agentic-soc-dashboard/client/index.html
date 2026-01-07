@@ -4,7 +4,6 @@
   <meta charset="UTF-8" />
   <title>Security Operations – Agentic SOC Dashboard</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-
   <link rel="stylesheet" href="./styles.css" />
 </head>
 
@@ -43,10 +42,10 @@
     <main class="content">
 
       <!-- ================= OVERVIEW ================= -->
-      <section id="page-overview" class="page">
+      <section id="page-overview" class="page active">
         <section class="grid">
 
-          <!-- KPI CARD (FULL WIDTH) -->
+          <!-- KPI CARD -->
           <div class="card kpis">
             <div class="card-head">
               <div class="card-title">Alert Severity</div>
@@ -79,7 +78,6 @@
               <div class="card-title">Alerts</div>
               <div class="muted">Most recent first</div>
             </div>
-
             <div id="alerts" class="alerts"></div>
           </div>
 
@@ -269,17 +267,98 @@
         </div>
       </section>
 
-      <!-- ================= SETTINGS ================= -->
+      <!-- ================= SETTINGS PAGE ================= -->
       <section id="page-settings" class="page">
         <div class="page-head">
           <div>
             <div class="page-title">Settings</div>
-            <div class="muted">Tune thresholds, windows, and attack pacing</div>
+            <div class="muted">Tune thresholds, windows, and detection behaviour</div>
           </div>
         </div>
 
-        <div class="card">
-          <div class="muted">We’ll build this page next.</div>
+        <div class="settings-layout">
+          <div class="card">
+            <div class="card-head">
+              <div class="card-title">Detection policy</div>
+              <div class="muted">These parameters affect future detections (not historical alerts).</div>
+            </div>
+
+            <div class="settings-grid">
+
+              <div class="setting">
+                <div class="setting-top">
+                  <div class="setting-label">Rolling analysis window</div>
+                  <div class="setting-value"><span id="valWindow">60</span>s</div>
+                </div>
+                <div class="slider-row">
+                  <input id="setWindow" type="range" min="15" max="300" step="5" />
+                </div>
+                <div class="muted">How far back the agent looks when correlating events.</div>
+              </div>
+
+              <div class="setting">
+                <div class="setting-top">
+                  <div class="setting-label">Dedup cooldown</div>
+                  <div class="setting-value"><span id="valDedup">20</span>s</div>
+                </div>
+                <div class="slider-row">
+                  <input id="setDedup" type="range" min="0" max="120" step="5" />
+                </div>
+                <div class="muted">Prevents repeating the same alert too frequently.</div>
+              </div>
+
+              <div class="setting">
+                <div class="setting-top">
+                  <div class="setting-label">Brute-force threshold</div>
+                  <div class="setting-value"><span id="valBrute">8</span> fails</div>
+                </div>
+                <div class="slider-row">
+                  <input id="setBrute" type="range" min="3" max="25" step="1" />
+                </div>
+                <div class="muted">Auth failures within the window before brute-force suspicion.</div>
+              </div>
+
+              <div class="setting">
+                <div class="setting-top">
+                  <div class="setting-label">Recon threshold</div>
+                  <div class="setting-value"><span id="valRecon">6</span> attempts</div>
+                </div>
+                <div class="slider-row">
+                  <input id="setRecon" type="range" min="3" max="25" step="1" />
+                </div>
+                <div class="muted">Connection attempts / probing before recon suspicion.</div>
+              </div>
+
+              <div class="setting">
+                <div class="setting-top">
+                  <div class="setting-label">Sensitive reads threshold</div>
+                  <div class="setting-value"><span id="valReads">4</span> reads</div>
+                </div>
+                <div class="slider-row">
+                  <input id="setReads" type="range" min="1" max="20" step="1" />
+                </div>
+                <div class="muted">Sensitive file reads within the window before escalation.</div>
+              </div>
+
+              <div class="setting">
+                <div class="setting-top">
+                  <div class="setting-label">Exfil threshold</div>
+                  <div class="setting-value"><span id="valExfil">300000</span> bytes</div>
+                </div>
+                <div class="slider-row">
+                  <input id="setExfil" type="range" min="50000" max="1000000" step="50000" />
+                </div>
+                <div class="muted">Outbound bytes within the window before exfil suspicion.</div>
+              </div>
+
+            </div>
+
+            <div class="settings-actions">
+              <button id="btnApplySettings" class="btn">Apply settings</button>
+              <button id="btnResetSettings" class="btn danger">Restore defaults</button>
+              <div id="settingsStatus" class="muted" style="margin-left:auto;"></div>
+            </div>
+          </div>
         </div>
       </section>
 
