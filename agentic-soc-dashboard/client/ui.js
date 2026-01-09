@@ -7,10 +7,21 @@ function escapeHtml(v) { // escape HTML special characters
     .replaceAll("'", "&#039;");
 }
 
-function timeStr(ts) { // format timestamp as time string
+function timeStr(ts) {
   if (!ts) return "—";
-  return new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+
+  const d = new Date(ts);
+
+  let h = d.getHours();
+  const m = d.getMinutes().toString().padStart(2, "0");
+  const s = d.getSeconds().toString().padStart(2, "0");
+
+  const ampm = h >= 12 ? "PM" : "AM";
+  h = ((h + 11) % 12) + 1;
+
+  return `${h}:${m}:${s} ${ampm}`;
 }
+
 
 function sevRank(sev) { // get numeric rank of severity
   const s = String(sev || "LOW").toUpperCase();
