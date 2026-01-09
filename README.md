@@ -1,46 +1,50 @@
-# Agentic SOC Dashboard (Cybersecurity Threat Monitoring)
+# Agentic SOC Dashboard (Cybersecurity Simulation)
 
-A real-time **Security Operations Centre (SOC) dashboard** that simulates enterprise telemetry and applies an **agentic detection workflow** to generate alerts, group incidents into investigations, and visualise attack vs baseline activity.
+A high-fidelity Security Operations Centre (SOC) Simulation and SOAR (Security Orchestration, Automation, and Response) platform. This application streams live enterprise telemetry and utilizes a stateful detection engine to identify multi-stage attacks, manage investigations, and enforce security policies.
 
-Built to demonstrate practical SOC concepts (triage, escalation, campaigns) with a clean, modern UI and explainable detection logic.
 
-## Highlights
 
-- **Real-time telemetry pipeline**: simulated events streamed into the UI (auth, recon, sensitive access, exfil).
-- **Agentic escalation**: detection logic promotes suspicious patterns into **alerts** and groups them into **investigations** (campaign-level view).
-- **SOC-style triage UX**:
-  - Alerts queue with **search / severity filter / sorting**
-  - Click-to-view **full alert details** panel
-  - Investigations queue grouped by attacker entity (IP) with case-level details
-- **Threat vs baseline analytics**:
-  - D3 trends show **attack-tagged activity** vs **home-IP baseline auth success**
-  - “Threat Pressure” metric normalises threat volume against baseline
-  - Suppresses incomplete time bins to avoid misleading end-of-series dips
-- **Polished UI**: SPA routing, consistent layout, scroll-safe panels, product-like design.
+## Core Functionalities
+
+### 1. Advanced Detection Engine (socAgent.js)
+Unlike static dashboards, this project features a stateful correlation engine that identifies attack patterns across time windows:
+* **Multi-Stage Correlation:** Detects "Confirmed Compromises" by linking disparate events (Brute Force → Recon → Sensitive File Access).
+* **Dynamic Thresholding:** Uses configurable rolling windows and deduplication logic to prevent alert fatigue.
+* **Heuristic Detectors:** Includes dedicated logic for Reconnaissance (port scanning), Brute Force, and Data Exfiltration.
+
+### 2. Interactive SOC Workflow
+* **Incident Triage:** A master-detail interface for alerts including severity filtering, search, and sorting.
+* **Investigation Management:** Automatically groups related alerts by attacker IP into "Campaigns," allowing analysts to track the entire lifecycle of an intrusion.
+* **SOAR Integration:** Real-time "Response" capabilities—analysts can block IPs or disable users directly from the dashboard, which synchronizes with the backend policy engine.
+
+### 3. Real-Time Data Visualization
+* **D3.js Analytics:** Live-updating trend charts visualizing "Threat Pressure" (attack volume vs. baseline activity).
+* **KPI Tracking:** Real-time counters for Critical, High, Medium, and Low severity incidents.
+
+
 
 ## Tech Stack
 
-- **Frontend**: Vanilla JS (ES modules), D3.js, HTML/CSS (SPA hash routing)
-- **Backend**: Node.js + Express (telemetry simulator API)
-- **Detection**: Agent-style rules + stateful correlation (campaign grouping)
+* **Frontend:** Vanilla JavaScript (ES6+ Modules), D3.js for data visualization, CSS3 Grid/Flexbox.
+* **Backend:** Node.js & Express (Telemetry & Policy API).
+* **State Management:** Custom client-side state machine with render-freeze protection during user interaction.
 
 ## Architecture Overview
 
-1. **Telemetry server** emits security-relevant events (normal user activity + multi-stage attack runs).
-2. **SOC agent** consumes events, maintains rolling state, and:
-   - raises alerts with explanations (triage-friendly)
-   - groups alerts by attacker entity into investigations (campaigns)
-3. **Dashboard UI** renders:
-   - alert queue + details view
-   - investigations queue + details view
-   - threat vs baseline trend charts
+1. **Mock Telemetry Server:** Generates a mix of "noise" (normal user behavior) and "signals" (coordinated attack sequences).
+2. **Detection Agent:** Processes the event stream, maintains a rolling history, and promotes patterns to Alerts.
+3. **Policy Engine:** Handles orchestration commands (blocking/resetting) to simulate real-world network defense.
+4. **Responsive UI:** A Single Page Application (SPA) using hash-routing for seamless navigation between Overview, Alerts, Investigations, and Settings.
+
+
 
 ## Getting Started
 
 ### Prerequisites
-- Node.js (LTS recommended)
+* **Node.js** (v16.x or higher)
 
-### Run the telemetry server
-```bash
-npm install
-node server.js
+### Installation & Execution
+1. **Clone the repository** and navigate to the project folder.
+2. **Start the Telemetry Server:**
+   ```bash
+   node server.js
