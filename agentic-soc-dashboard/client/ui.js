@@ -1,46 +1,122 @@
-// client/ui.js
-
-function truncate(str, n) {
-  if (!str) return "";
-  return str.length > n ? str.slice(0, n - 1) + "…" : str;
+function escapeHtml(v) { // escape HTML special characters
+  return String(v ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
 }
 
-function sevRank(sev) {
-  const s = (sev || "LOW").toUpperCase();
+function timeStr(ts) { // format timestamp as time string
+  if (!ts) return "—";
+  return new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+}
+
+function sevRank(sev) { // get numeric rank of severity
+  const s = String(sev || "LOW").toUpperCase();
   if (s === "CRITICAL") return 4;
   if (s === "HIGH") return 3;
   if (s === "MEDIUM") return 2;
   return 1;
 }
 
-/* ================= OVERVIEW ALERTS ================= */
+function toArrayMaybeSet(v) { // convert value to array if it's a Set or single value
+  if (!v) return [];
+  if (Array.isArray(v)) return v;
+  if (v instanceof Set) return Array.from(v);
+  return [];
+}
 
-export function renderAlerts(alerts) {
+function emit(name, detail) { // emit custom event on window
+  window.dispatchEvent(new CustomEvent(name, { detail }));
+}
+
+function deriveInvestigationStatus(inv) { // derive investigation status from its properties and actions
+  const override = inv?.statusOverride;
+  if (override) return String(override).toUpperCase();
+
+  const actions = Array.isArray(inv?.actions) ? inv.actions : [];
+  const has = (a) => actions.some((x) => String(x?.type || x).toUpperCase() === a);
+
+  const closed = Boolean(inv?.closedTs) || has("CLOSE");
+  const reopened = Boolean(inv?.reopenedTs) || has("REOPEN") || String(inv?.status || "").toUpperCase() === "REOPENED";
+
+  if (reopened) return "REOPENED";
+  if (closed) return "CLOSED";
+
+  const contained =
+    has("BLOCK_IP") ||
+    has("DISABLE_USER") ||
+    has("FORCE_PASSWORD_RESET") ||
+    has("REVOKE_SESSIONS") ||
+    has("CONTAIN");
+
+  if (contained) return "CONTAINED";
+
+  const monitoring = has("ACK") || has("ACKNOWLEDGE") || has("ASSIGN") || Boolean(inv?.ackTs) || Boolean(inv?.assignedTo);
+  if (monitoring) return "MONITORING";
+
+  const s = String(inv?.status || "OPEN").toUpperCase();
+  if (["OPEN", "MONITORING", "CONTAINED", "CLOSED", "REOPENED"].includes(s)) return s;
+  return "OPEN";
+}
+
+function statusLabel(status) { // get human-readable label for investigation status
+  const s = String(status || "OPEN").toUpperCase();
+  if (s === "REOPENED") return "Reopened";
+  if (s === "CLOSED") return "Closed";
+  if (s === "CONTAINED") return "Contained";
+  if (s === "MONITORING") return "Monitoring";
+  return "Open";
+}
+
+function badgeHtml(kind, value) { // generate HTML for badge of given kind and value
+  const v = String(value || "").toUpperCase();
+  const cls = `${kind}-badge ${kind}-${v.toLowerCase()}`;
+  return `<span class="${cls}">${escapeHtml(kind === "sev" ? v : statusLabel(v))}</span>`;
+}
+
+function summarizeAlert(a) { // summarize alert explanation
+  const exp = String(a?.explanation || "");
+  if (exp.length <= 100) return exp;
+  return exp.slice(0, 100) + "…";
+}
+
+function stableId(obj, fallback) { // generate stable ID for object based on its id property or fallback
+  return String(obj?.id || fallback || "");
+}
+
+const uiState = {
+  selectedAlertId: null,
+  selectedInvestigationId: null,
+};
+
+export function renderAlerts(alerts) { // render recent alerts list
   const root = document.getElementById("alerts");
   if (!root) return;
 
   root.innerHTML = "";
 
-  const latest = alerts.slice(-12).reverse();
+  const latest = [...alerts].slice(-12).reverse();
   for (const a of latest) {
     const div = document.createElement("div");
     div.className = "alert";
     div.innerHTML = `
       <div class="top">
-        <span>${a.severity} — ${a.type}</span>
-        <span>${new Date(a.ts).toLocaleTimeString()}</span>
+        <span>${escapeHtml(String(a.severity || "LOW").toUpperCase())} — ${escapeHtml(a.type)}</span>
+        <span>${escapeHtml(timeStr(a.ts))}</span>
       </div>
       <div class="meta">
-        <div><strong>IP:</strong> ${a.ip}</div>
-        <div><strong>User:</strong> ${a.user}</div>
-        <div style="margin-top:6px">${a.explanation}</div>
+        <div><strong>IP:</strong> ${escapeHtml(a.ip)}</div>
+        <div><strong>User:</strong> ${escapeHtml(a.user)}</div>
+        <div style="margin-top:6px">${escapeHtml(a.explanation)}</div>
       </div>
     `;
     root.appendChild(div);
   }
 }
 
-export function renderKPIs(alerts) {
+export function renderKPIs(alerts) { // render KPI counts for alerts by severity
   const elCritical = document.getElementById("kpiCritical");
   const elHigh = document.getElementById("kpiHigh");
   const elMedium = document.getElementById("kpiMedium");
@@ -50,20 +126,20 @@ export function renderKPIs(alerts) {
   const counts = { CRITICAL: 0, HIGH: 0, MEDIUM: 0, LOW: 0 };
 
   for (const a of alerts) {
-    const sev = (a.severity || "LOW").toUpperCase();
+    const sev = String(a.severity || "LOW").toUpperCase();
     if (sev === "CRITICAL") counts.CRITICAL++;
     else if (sev === "HIGH") counts.HIGH++;
     else if (sev === "MEDIUM") counts.MEDIUM++;
     else counts.LOW++;
   }
 
-  elCritical.innerText = counts.CRITICAL;
-  elHigh.innerText = counts.HIGH;
-  elMedium.innerText = counts.MEDIUM;
-  elLow.innerText = counts.LOW;
+  elCritical.innerText = String(counts.CRITICAL);
+  elHigh.innerText = String(counts.HIGH);
+  elMedium.innerText = String(counts.MEDIUM);
+  elLow.innerText = String(counts.LOW);
 }
 
-export function renderInvestigations(investigations) {
+export function renderInvestigations(investigations) { // render recent investigations list
   const body = document.getElementById("investigationsBody");
   if (!body) return;
 
@@ -71,325 +147,357 @@ export function renderInvestigations(investigations) {
 
   const rows = [...investigations]
     .sort((a, b) => (b.lastSeenTs || b.createdTs) - (a.lastSeenTs || a.createdTs))
-    .slice(0, 25);
+    .slice(0, 5);
 
   for (const inv of rows) {
-    const created = new Date(inv.createdTs).toLocaleTimeString();
-    const title = truncate(inv.title, 42);
-    const entity = inv.entity || "";
-    const victims = inv.victims ? Array.from(inv.victims).join(", ") : "";
+    const created = timeStr(inv.createdTs);
+    const status = deriveInvestigationStatus(inv);
+    const title = inv.title || `Suspicious activity from ${inv.entity}`;
 
     const tr = document.createElement("tr");
     tr.innerHTML = `
-      <td>${created}</td>
-      <td>${title} <span class="soft">(${inv.count} hits)</span></td>
-      <td>${inv.severity}</td>
-      <td>${entity}${victims ? ` <span class="soft">→ ${truncate(victims, 24)}</span>` : ""}</td>
+      <td>${escapeHtml(created)}</td>
+      <td>${escapeHtml(title)} <span class="soft">(${escapeHtml(inv.count)} hits)</span></td>
+      <td>${badgeHtml("sev", inv.severity)}</td>
+      <td>${escapeHtml(inv.entity)}</td>
     `;
     body.appendChild(tr);
   }
 }
 
-/* ================= ALERTS PAGE ================= */
-
-let alertsPageBound = false;
-let selectedAlertKey = null;
-
-function keyForAlert(a) {
-  return `${a.ts}|${a.type}|${a.ip}|${a.user}|${a.severity}`;
+function getAlertsControls() { // get references to alerts page controls
+  return {
+    search: document.getElementById("alertsSearch"),
+    severity: document.getElementById("alertsSeverity"),
+    sort: document.getElementById("alertsSort"),
+    tableBody: document.getElementById("alertsTableBody"),
+    details: document.getElementById("alertDetails"),
+    detailsMeta: document.getElementById("alertDetailsMeta"),
+  };
 }
 
-function renderAlertDetails(a) {
-  const meta = document.getElementById("alertDetailsMeta");
-  const root = document.getElementById("alertDetails");
-  if (!meta || !root) return;
-
-  if (!a) {
-    meta.textContent = "Select an alert";
-    root.innerHTML = `<div class="muted">No alert selected.</div>`;
-    return;
-  }
-
-  meta.textContent = `${a.severity} · ${a.type}`;
-
-  root.innerHTML = `
-    <div class="details-row"><div class="label">Time</div><div class="value">${new Date(a.ts).toLocaleString()}</div></div>
-    <div class="details-row"><div class="label">Severity</div><div class="value">${a.severity}</div></div>
-    <div class="details-row"><div class="label">Type</div><div class="value">${a.type}</div></div>
-    <div class="details-row"><div class="label">User</div><div class="value">${a.user}</div></div>
-    <div class="details-row"><div class="label">IP</div><div class="value">${a.ip}</div></div>
-    <div class="details-row"><div class="label">Explanation</div><div class="value">${a.explanation || ""}</div></div>
-  `;
+function getInvestigationsControls() { // get references to investigations page controls
+  return {
+    search: document.getElementById("invSearch"),
+    severity: document.getElementById("invSeverity"),
+    status: document.getElementById("invStatus"),
+    sort: document.getElementById("invSort"),
+    tableBody: document.getElementById("invTableBody"),
+    details: document.getElementById("invDetails"),
+    detailsMeta: document.getElementById("invDetailsMeta"),
+  };
 }
 
-export function bindAlertsPageControls(onChange) {
-  if (alertsPageBound) return;
-  alertsPageBound = true;
+function filterSortAlerts(allAlerts, controls) { // filter and sort alerts based on controls
+  const q = String(controls.search?.value || "").trim().toLowerCase();
+  const sev = String(controls.severity?.value || "ALL").toUpperCase();
+  const sort = String(controls.sort?.value || "NEWEST").toUpperCase();
 
-  const search = document.getElementById("alertsSearch");
-  const sev = document.getElementById("alertsSeverity");
-  const sort = document.getElementById("alertsSort");
+  let arr = [...allAlerts];
 
-  const handler = () => onChange?.();
-
-  if (search) search.addEventListener("input", handler);
-  if (sev) sev.addEventListener("change", handler);
-  if (sort) sort.addEventListener("change", handler);
-}
-
-export function renderAlertsPage(alerts) {
-  const body = document.getElementById("alertsTableBody");
-  const searchEl = document.getElementById("alertsSearch");
-  const sevEl = document.getElementById("alertsSeverity");
-  const sortEl = document.getElementById("alertsSort");
-  if (!body || !searchEl || !sevEl || !sortEl) return;
-
-  const q = (searchEl.value || "").trim().toLowerCase();
-  const sevFilter = (sevEl.value || "ALL").toUpperCase();
-  const sortMode = (sortEl.value || "NEWEST").toUpperCase();
-
-  let list = [...alerts];
-
-  if (sevFilter !== "ALL") {
-    list = list.filter((a) => (a.severity || "LOW").toUpperCase() === sevFilter);
+  if (sev !== "ALL") {
+    arr = arr.filter((a) => String(a.severity || "LOW").toUpperCase() === sev);
   }
 
   if (q) {
-    list = list.filter((a) => {
-      const hay = [a.ip, a.user, a.type, a.severity, a.explanation]
-        .filter(Boolean)
+    arr = arr.filter((a) => {
+      const blob = [
+        a.type,
+        a.user,
+        a.ip,
+        a.explanation,
+        a.severity,
+        timeStr(a.ts),
+      ]
         .join(" ")
         .toLowerCase();
-      return hay.includes(q);
+      return blob.includes(q);
     });
   }
 
-  list.sort((a, b) => {
-    if (sortMode === "OLDEST") return (a.ts || 0) - (b.ts || 0);
-    if (sortMode === "SEV_DESC") return sevRank(b.severity) - sevRank(a.severity) || (b.ts || 0) - (a.ts || 0);
-    if (sortMode === "SEV_ASC") return sevRank(a.severity) - sevRank(b.severity) || (b.ts || 0) - (a.ts || 0);
-    return (b.ts || 0) - (a.ts || 0);
-  });
+  if (sort === "OLDEST") arr.sort((a, b) => (a.ts || 0) - (b.ts || 0));
+  else if (sort === "SEV_DESC") arr.sort((a, b) => sevRank(b.severity) - sevRank(a.severity) || (b.ts || 0) - (a.ts || 0));
+  else if (sort === "SEV_ASC") arr.sort((a, b) => sevRank(a.severity) - sevRank(b.severity) || (b.ts || 0) - (a.ts || 0));
+  else arr.sort((a, b) => (b.ts || 0) - (a.ts || 0));
 
-  body.innerHTML = "";
+  return arr;
+}
 
-  if (list.length === 0) {
-    const tr = document.createElement("tr");
-    tr.innerHTML = `<td colspan="6" class="muted">No alerts match your filters.</td>`;
-    body.appendChild(tr);
-    renderAlertDetails(null);
-    selectedAlertKey = null;
+function renderAlertDetails(alert) { // render details of selected alert
+  const controls = getAlertsControls();
+  if (!controls.details || !controls.detailsMeta) return;
+
+  if (!alert) {
+    controls.detailsMeta.textContent = "Select an alert";
+    controls.details.innerHTML = `<div class="muted">No alert selected.</div>`;
     return;
   }
 
-  let selected = null;
+  controls.detailsMeta.textContent = `${String(alert.severity || "LOW").toUpperCase()} · ${alert.type}`;
 
-  for (const a of list.slice(0, 200)) {
-    const k = keyForAlert(a);
+  controls.details.innerHTML = `
+    <div class="details-grid">
+      <div class="details-row"><div class="muted">Time</div><div>${escapeHtml(timeStr(alert.ts))}</div></div>
+      <div class="details-row"><div class="muted">Severity</div><div>${badgeHtml("sev", alert.severity)}</div></div>
+      <div class="details-row"><div class="muted">Type</div><div>${escapeHtml(alert.type)}</div></div>
+      <div class="details-row"><div class="muted">User</div><div>${escapeHtml(alert.user)}</div></div>
+      <div class="details-row"><div class="muted">IP</div><div>${escapeHtml(alert.ip)}</div></div>
+      <div class="details-block">
+        <div class="muted" style="margin-bottom:6px;">Explanation</div>
+        <div>${escapeHtml(alert.explanation)}</div>
+      </div>
+  `;
 
+  controls.details.querySelectorAll("[data-alert-action]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const action = btn.getAttribute("data-alert-action");
+      emit("soc:alertAction", { action, alertId: alert.id, ip: alert.ip, user: alert.user, ts: Date.now() });
+    });
+  });
+}
+
+export function renderAlertsPage(alerts) { // render alerts page with filtering and selection
+  const c = getAlertsControls();
+  if (!c.tableBody) return;
+
+  const filtered = filterSortAlerts(alerts, c);
+
+  const frag = document.createDocumentFragment();
+  const selected = uiState.selectedAlertId;
+
+  for (const a of filtered.slice(0, 500)) {
+    const id = stableId(a, `A-${a.ts}-${a.type}-${a.ip}`);
     const tr = document.createElement("tr");
-    tr.className = "row-click";
-    if (selectedAlertKey && k === selectedAlertKey) tr.classList.add("selected-row");
+    tr.dataset.alertId = id;
+    tr.className = id === selected ? "row-selected" : "";
 
     tr.innerHTML = `
-      <td>${new Date(a.ts).toLocaleTimeString()}</td>
-      <td><span class="pill sev-${(a.severity || "LOW").toLowerCase()}">${a.severity}</span></td>
-      <td>${a.type}</td>
-      <td>${a.user}</td>
-      <td>${a.ip}</td>
-      <td class="muted">${truncate(a.explanation, 90)}</td>
+      <td>${escapeHtml(timeStr(a.ts))}</td>
+      <td>${badgeHtml("sev", a.severity)}</td>
+      <td>${escapeHtml(a.type)}</td>
+      <td>${escapeHtml(a.user)}</td>
+      <td>${escapeHtml(a.ip)}</td>
+      <td title="${escapeHtml(a.explanation)}">${escapeHtml(summarizeAlert(a))}</td>
     `;
 
     tr.addEventListener("click", () => {
-      selectedAlertKey = k;
-      renderAlertsPage(alerts);
+      uiState.selectedAlertId = id;
+
+      const found = filtered.find((x) => stableId(x, `A-${x.ts}-${x.type}-${x.ip}`) === id) || null;
+      renderAlertDetails(found);
+
+      c.tableBody.querySelectorAll("tr").forEach((row) => row.classList.remove("row-selected"));
+      tr.classList.add("row-selected");
     });
 
-    body.appendChild(tr);
-
-    if (selectedAlertKey && k === selectedAlertKey) selected = a;
+    frag.appendChild(tr);
   }
 
-  if (!selectedAlertKey) {
-    selectedAlertKey = keyForAlert(list[0]);
-    selected = list[0];
-    renderAlertsPage(alerts);
-    return;
+  c.tableBody.innerHTML = "";
+  c.tableBody.appendChild(frag);
+
+  if (uiState.selectedAlertId) {
+    const found =
+      filtered.find((x) => stableId(x, `A-${x.ts}-${x.type}-${x.ip}`) === uiState.selectedAlertId) || null;
+    renderAlertDetails(found);
+  } else {
+    renderAlertDetails(null);
+  }
+}
+
+export function bindAlertsPageControls(onChange) { // bind event listeners to alerts page controls
+  const c = getAlertsControls();
+  if (!c.search || !c.severity || !c.sort) return;
+
+  const fire = () => onChange?.();
+
+  c.search.addEventListener("input", fire);
+  c.severity.addEventListener("change", fire);
+  c.sort.addEventListener("change", fire);
+}
+
+function filterSortInvestigations(allInv, controls) { // filter and sort investigations based on controls
+  const q = String(controls.search?.value || "").trim().toLowerCase();
+  const sev = String(controls.severity?.value || "ALL").toUpperCase();
+  const status = String(controls.status?.value || "ALL").toUpperCase();
+  const sort = String(controls.sort?.value || "LAST_SEEN").toUpperCase();
+
+  let arr = [...allInv].map((inv) => ({
+    ...inv,
+    __status: deriveInvestigationStatus(inv),
+    __victims: toArrayMaybeSet(inv.victims),
+  }));
+
+  if (sev !== "ALL") {
+    arr = arr.filter((i) => String(i.severity || "LOW").toUpperCase() === sev);
   }
 
-  renderAlertDetails(selected);
+  if (status !== "ALL") {
+    arr = arr.filter((i) => String(i.__status || "OPEN").toUpperCase() === status);
+  }
+
+  if (q) {
+    arr = arr.filter((i) => {
+      const blob = [
+        i.entity,
+        i.title,
+        i.__victims.join(","),
+        i.severity,
+        i.__status,
+      ]
+        .join(" ")
+        .toLowerCase();
+      return blob.includes(q);
+    });
+  }
+
+  if (sort === "CREATED") arr.sort((a, b) => (b.createdTs || 0) - (a.createdTs || 0));
+  else if (sort === "SEV_DESC") arr.sort((a, b) => sevRank(b.severity) - sevRank(a.severity) || (b.lastSeenTs || 0) - (a.lastSeenTs || 0));
+  else if (sort === "SEV_ASC") arr.sort((a, b) => sevRank(a.severity) - sevRank(b.severity) || (b.lastSeenTs || 0) - (a.lastSeenTs || 0));
+  else arr.sort((a, b) => (b.lastSeenTs || b.createdTs || 0) - (a.lastSeenTs || a.createdTs || 0));
+
+  return arr;
 }
 
-/* ================= INVESTIGATIONS PAGE ================= */
-
-let invPageBound = false;
-let selectedInvKey = null;
-
-function keyForInvestigation(inv) {
-  return `${inv.entity}|${inv.createdTs}|${inv.severity}|${inv.title}`;
-}
-
-function inferStage(inv) {
-  const t = (inv.title || "").toLowerCase();
-
-  // simple, explainable heuristics (good for coursework)
-  if (t.includes("exfil")) return "Exfiltration";
-  if (t.includes("sensitive") || t.includes("file")) return "Collection";
-  if (t.includes("brute") || t.includes("auth")) return "Credential access";
-  if (t.includes("recon") || t.includes("scan") || t.includes("port")) return "Reconnaissance";
-  return "Activity";
-}
-
-function renderInvDetails(inv) {
-  const meta = document.getElementById("invDetailsMeta");
-  const root = document.getElementById("invDetails");
-  if (!meta || !root) return;
+function renderInvestigationDetails(inv) { // render details of selected investigation
+  const c = getInvestigationsControls();
+  if (!c.details || !c.detailsMeta) return;
 
   if (!inv) {
-    meta.textContent = "Select a case";
-    root.innerHTML = `<div class="muted">No investigation selected.</div>`;
+    c.detailsMeta.textContent = "Select a case";
+    c.details.innerHTML = `<div class="muted">No investigation selected.</div>`;
     return;
   }
 
-  const created = new Date(inv.createdTs).toLocaleString();
-  const lastSeen = new Date(inv.lastSeenTs || inv.createdTs).toLocaleString();
-  const victimsArr = inv.victims ? Array.from(inv.victims) : [];
-  const victims = victimsArr.length ? victimsArr.join(", ") : "—";
-  const stage = inferStage(inv);
+  const status = deriveInvestigationStatus(inv);
+  const victims = toArrayMaybeSet(inv.victims);
+  const types = inv.typeCounts || {};
+  const typeLines = Object.entries(types)
+    .sort((a, b) => (b[1] || 0) - (a[1] || 0))
+    .slice(0, 8)
+    .map(([k, v]) => `<div class="details-row"><div class="muted">${escapeHtml(k)}</div><div>${escapeHtml(v)}</div></div>`)
+    .join("");
 
-  meta.textContent = `${inv.severity} · ${inv.entity}`;
+  c.detailsMeta.textContent = `${inv.entity} · ${statusLabel(status)}`;
 
-  root.innerHTML = `
-    <div class="details-row"><div class="label">Attacker (entity)</div><div class="value">${inv.entity}</div></div>
-    <div class="details-row"><div class="label">Severity</div><div class="value">${inv.severity}</div></div>
-    <div class="details-row"><div class="label">Status</div><div class="value">${inv.status || "OPEN"}</div></div>
-    <div class="details-row"><div class="label">Stage</div><div class="value">${stage}</div></div>
-    <div class="details-row"><div class="label">Created</div><div class="value">${created}</div></div>
-    <div class="details-row"><div class="label">Last seen</div><div class="value">${lastSeen}</div></div>
-    <div class="details-row"><div class="label">Title</div><div class="value">${inv.title}</div></div>
-    <div class="details-row"><div class="label">Hits</div><div class="value">${inv.count}</div></div>
-    <div class="details-row"><div class="label">Victims</div><div class="value">${victims}</div></div>
+  const actions = Array.isArray(inv.actions) ? inv.actions : [];
+  const actionLines = actions
+    .slice()
+    .reverse()
+    .slice(0, 12)
+    .map((a) => {
+      const t = String(a?.type || a).toUpperCase();
+      const who = a?.by ? ` · ${escapeHtml(a.by)}` : "";
+      const ts = a?.ts ? ` · ${escapeHtml(timeStr(a.ts))}` : "";
+      return `<div class="soft" style="margin-bottom:6px;">${escapeHtml(t)}${who}${ts}</div>`;
+    })
+    .join("") || `<div class="muted">No actions recorded yet.</div>`;
 
-    <div class="divider"></div>
+  c.details.innerHTML = `
+    <div class="details-grid">
+      <div class="details-row"><div class="muted">Attacker</div><div>${escapeHtml(inv.entity)}</div></div>
+      <div class="details-row"><div class="muted">Severity</div><div>${badgeHtml("sev", inv.severity)}</div></div>
+      <div class="details-row"><div class="muted">Status</div><div>${badgeHtml("status", status)}</div></div>
+      <div class="details-row"><div class="muted">Created</div><div>${escapeHtml(timeStr(inv.createdTs))}</div></div>
+      <div class="details-row"><div class="muted">Last seen</div><div>${escapeHtml(timeStr(inv.lastSeenTs || inv.createdTs))}</div></div>
+      <div class="details-row"><div class="muted">Hits</div><div>${escapeHtml(inv.count)}</div></div>
 
-    <div class="muted" style="line-height:1.4">
-      This case aggregates alerts for a single attacker entity (IP). The inferred stage is derived from the investigation title
-      and represents the most likely phase of the campaign (recon → credential access → collection → exfiltration).
+      <div class="details-block">
+        <div class="muted" style="margin-bottom:6px;">Victims</div>
+        <div>${victims.length ? victims.map((v) => `<span class="chip">${escapeHtml(v)}</span>`).join(" ") : `<span class="muted">—</span>`}</div>
+      </div>
+
+      <div class="details-block">
+        <div class="muted" style="margin-bottom:6px;">Top detections</div>
+        <div>${typeLines || `<div class="muted">—</div>`}</div>
+      </div>
+
+      <div class="details-block">
+        <div class="muted" style="margin-bottom:6px;">Actions</div>
+        <div>${actionLines}</div>
+      </div>
+
+      <div class="details-actions">
+        <button class="btn" data-inv-action="ACK">Acknowledge</button>
+        <button class="btn" data-inv-action="BLOCK_IP">Block IP</button>
+        <button class="btn" data-inv-action="DISABLE_USER">Disable user</button>
+        <button class="btn" data-inv-action="FORCE_PASSWORD_RESET">Force password reset</button>
+        <button class="btn danger" data-inv-action="CLOSE">Close case</button>
+      </div>
+      <div class="muted" style="font-size:12px;">
+        Status is derived from actions (Open → Monitoring → Contained → Closed, with Reopened on recurrence).
+      </div>
     </div>
   `;
-}
 
-export function bindInvestigationsPageControls(onChange) {
-  if (invPageBound) return;
-  invPageBound = true;
-
-  const search = document.getElementById("invSearch");
-  const sev = document.getElementById("invSeverity");
-  const status = document.getElementById("invStatus");
-  const sort = document.getElementById("invSort");
-
-  const handler = () => onChange?.();
-
-  if (search) search.addEventListener("input", handler);
-  if (sev) sev.addEventListener("change", handler);
-  if (status) status.addEventListener("change", handler);
-  if (sort) sort.addEventListener("change", handler);
-}
-
-export function renderInvestigationsPage(investigations) {
-  const body = document.getElementById("invTableBody");
-  const searchEl = document.getElementById("invSearch");
-  const sevEl = document.getElementById("invSeverity");
-  const statusEl = document.getElementById("invStatus");
-  const sortEl = document.getElementById("invSort");
-  if (!body || !searchEl || !sevEl || !statusEl || !sortEl) return;
-
-  const q = (searchEl.value || "").trim().toLowerCase();
-  const sevFilter = (sevEl.value || "ALL").toUpperCase();
-  const statusFilter = (statusEl.value || "ALL").toUpperCase();
-  const sortMode = (sortEl.value || "LAST_SEEN").toUpperCase();
-
-  let list = [...investigations];
-
-  if (sevFilter !== "ALL") {
-    list = list.filter((inv) => (inv.severity || "LOW").toUpperCase() === sevFilter);
-  }
-
-  if (statusFilter !== "ALL") {
-    list = list.filter((inv) => (inv.status || "OPEN").toUpperCase() === statusFilter);
-  }
-
-  if (q) {
-    list = list.filter((inv) => {
-      const victims = inv.victims ? Array.from(inv.victims).join(" ") : "";
-      const hay = [inv.entity, inv.title, victims, inv.severity, inv.status]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase();
-      return hay.includes(q);
+  c.details.querySelectorAll("[data-inv-action]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const action = btn.getAttribute("data-inv-action");
+      emit("soc:investigationAction", { action, investigationId: inv.id, attackerIp: inv.entity, ts: Date.now() });
     });
-  }
-
-  list.sort((a, b) => {
-    const aLast = a.lastSeenTs || a.createdTs || 0;
-    const bLast = b.lastSeenTs || b.createdTs || 0;
-
-    if (sortMode === "CREATED") return (b.createdTs || 0) - (a.createdTs || 0);
-    if (sortMode === "SEV_DESC") return sevRank(b.severity) - sevRank(a.severity) || (bLast - aLast);
-    if (sortMode === "SEV_ASC") return sevRank(a.severity) - sevRank(b.severity) || (bLast - aLast);
-    // LAST_SEEN default
-    return bLast - aLast;
   });
+}
 
-  body.innerHTML = "";
+export function renderInvestigationsPage(investigations) { // render investigations page with filtering and selection
+  const c = getInvestigationsControls();
+  if (!c.tableBody) return;
 
-  if (list.length === 0) {
-    const tr = document.createElement("tr");
-    tr.innerHTML = `<td colspan="6" class="muted">No investigations match your filters.</td>`;
-    body.appendChild(tr);
-    renderInvDetails(null);
-    selectedInvKey = null;
-    return;
-  }
+  const filtered = filterSortInvestigations(investigations, c);
+  const selected = uiState.selectedInvestigationId;
 
-  let selected = null;
+  const frag = document.createDocumentFragment();
 
-  for (const inv of list.slice(0, 200)) {
-    const k = keyForInvestigation(inv);
-    const lastSeenTs = inv.lastSeenTs || inv.createdTs;
-    const lastSeen = new Date(lastSeenTs).toLocaleTimeString();
-    const victimsArr = inv.victims ? Array.from(inv.victims) : [];
-    const victims = victimsArr.length ? truncate(victimsArr.join(", "), 32) : "—";
+  for (const inv of filtered.slice(0, 500)) {
+    const id = stableId(inv, inv.entity);
+    const status = deriveInvestigationStatus(inv);
+    const victims = toArrayMaybeSet(inv.victims);
 
     const tr = document.createElement("tr");
-    tr.className = "row-click";
-    if (selectedInvKey && k === selectedInvKey) tr.classList.add("selected-row");
+    tr.dataset.investigationId = id;
+    tr.className = id === selected ? "row-selected" : "";
 
     tr.innerHTML = `
-      <td>${lastSeen}</td>
-      <td><span class="pill sev-${(inv.severity || "LOW").toLowerCase()}">${inv.severity}</span></td>
-      <td>${inv.entity}</td>
-      <td class="muted">${victims}</td>
-      <td>${inv.count}</td>
-      <td>${inv.status || "OPEN"}</td>
+      <td>${escapeHtml(timeStr(inv.lastSeenTs || inv.createdTs))}</td>
+      <td>${badgeHtml("sev", inv.severity)}</td>
+      <td>${escapeHtml(inv.entity)}</td>
+      <td>${escapeHtml(victims.slice(0, 3).join(", "))}${victims.length > 3 ? ` <span class="soft">+${victims.length - 3}</span>` : ""}</td>
+      <td>${escapeHtml(inv.count)}</td>
+      <td>${badgeHtml("status", status)}</td>
     `;
 
     tr.addEventListener("click", () => {
-      selectedInvKey = k;
-      renderInvestigationsPage(investigations);
+      uiState.selectedInvestigationId = id;
+
+      const found = filtered.find((x) => stableId(x, x.entity) === id) || null;
+      renderInvestigationDetails(found);
+
+      c.tableBody.querySelectorAll("tr").forEach((row) => row.classList.remove("row-selected"));
+      tr.classList.add("row-selected");
     });
 
-    body.appendChild(tr);
-
-    if (selectedInvKey && k === selectedInvKey) selected = inv;
+    frag.appendChild(tr);
   }
 
-  if (!selectedInvKey) {
-    selectedInvKey = keyForInvestigation(list[0]);
-    selected = list[0];
-    renderInvestigationsPage(investigations);
-    return;
-  }
+  c.tableBody.innerHTML = "";
+  c.tableBody.appendChild(frag);
 
-  renderInvDetails(selected);
+  if (uiState.selectedInvestigationId) {
+    const found =
+      filtered.find((x) => stableId(x, x.entity) === uiState.selectedInvestigationId) || null;
+    renderInvestigationDetails(found);
+  } else {
+    renderInvestigationDetails(null);
+  }
+}
+
+export function bindInvestigationsPageControls(onChange) { // bind event listeners to investigations page controls
+  const c = getInvestigationsControls();
+  if (!c.search || !c.severity || !c.status || !c.sort) return;
+
+  const fire = () => onChange?.();
+
+  c.search.addEventListener("input", fire);
+  c.severity.addEventListener("change", fire);
+  c.status.addEventListener("change", fire);
+  c.sort.addEventListener("change", fire);
 }

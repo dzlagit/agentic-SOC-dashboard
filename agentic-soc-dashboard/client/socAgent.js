@@ -1,4 +1,3 @@
-// client/socAgent.js
 import { settings } from "./settings.js";
 
 const state = {
@@ -8,28 +7,25 @@ const state = {
   investigations: [],
   investigationsByIp: new Map(), // attacker ip -> investigation object
 
-  // Rolling windows / memory
   authFailsByIp: new Map(), // ip -> timestamps[]
   reconByIp: new Map(), // ip -> { ports: Map(port -> lastTs) }
   sensitiveReadsByIp: new Map(), // ip -> timestamps[]
   exfilByIp: new Map(), // ip -> { items: [{ts, bytes}] }
 
-  // Cooldowns to prevent spam
-  lastAlertKeyTs: new Map(), // `${alertType}|${ip}|${user}` -> ts
+  lastAlertKeyTs: new Map(), 
 
-  // Correlation memory per (ip,user)
-  stageByIpUser: new Map(), // `${ip}|${user}` -> stage timestamps
+  stageByIpUser: new Map(), 
 };
 
-function pruneOld(tsArray, cutoff) {
+function pruneOld(tsArray, cutoff) { // remove timestamps older than cutoff from tsArray
   while (tsArray.length && tsArray[0] < cutoff) tsArray.shift();
 }
 
-function pruneExfilItems(items, cutoff) {
+function pruneExfilItems(items, cutoff) { // remove exfil items older than cutoff from items[]
   while (items.length && items[0].ts < cutoff) items.shift();
 }
 
-function makeAlert({ ts, ip, user, type, severity, explanation }) {
+function makeAlert({ ts, ip, user, type, severity, explanation }) { // create alert object
   return {
     id: `A-${ts}-${type}-${ip}`,
     ts,
@@ -41,7 +37,7 @@ function makeAlert({ ts, ip, user, type, severity, explanation }) {
   };
 }
 
-function cooldownOk(alertType, ip, user, ts, cooldownMs) {
+function cooldownOk(alertType, ip, user, ts, cooldownMs) { // check if cooldown period has passed for alert key
   const key = `${alertType}|${ip}|${user || "-"}`;
   const last = state.lastAlertKeyTs.get(key) || 0;
   if (ts - last < cooldownMs) return false;
@@ -49,7 +45,7 @@ function cooldownOk(alertType, ip, user, ts, cooldownMs) {
   return true;
 }
 
-function upsertInvestigation(attackerIp, alert) {
+function upsertInvestigation(attackerIp, alert) { // create or update investigation for attackerIp based on alert
   let inv = state.investigationsByIp.get(attackerIp);
 
   if (!inv) {
@@ -78,27 +74,23 @@ function upsertInvestigation(attackerIp, alert) {
   inv.victims.add(alert.user);
   inv.typeCounts[alert.type] = (inv.typeCounts[alert.type] || 0) + 1;
 
-  // Severity escalation (preserve existing behaviour)
   if (alert.severity === "CRITICAL") inv.severity = "CRITICAL";
   else if (alert.severity === "HIGH" && inv.severity !== "CRITICAL") inv.severity = "HIGH";
   else if (alert.severity === "MEDIUM" && !["HIGH", "CRITICAL"].includes(inv.severity)) inv.severity = "MEDIUM";
 }
 
-// ---- Correlation helper: track stages per (ip,user) ----
-function markStage(ip, user, stageName, ts) {
+function markStage(ip, user, stageName, ts) { // mark a stage timestamp for ip/user
   const key = `${ip}|${user}`;
   const obj = state.stageByIpUser.get(key) || {};
   obj[stageName] = ts;
   state.stageByIpUser.set(key, obj);
 }
 
-function getStages(ip, user) {
+function getStages(ip, user) { // get stage timestamps for ip/user
   return state.stageByIpUser.get(`${ip}|${user}`) || {};
 }
 
-function maybeCorrelateConfirmedCompromise(ip, user, ts) {
-  // Multi-stage correlation: bruteForce -> anomalousLogin -> (fileSpike or exfil)
-  // Use a correlation horizon that scales with the window (but never too tiny)
+function maybeCorrelateConfirmedCompromise(ip, user, ts) { // check if stages indicate confirmed compromise
   const horizonMs = Math.max(60_000, settings.windowSeconds * 2 * 1000);
 
   const s = getStages(ip, user);
@@ -118,7 +110,6 @@ function maybeCorrelateConfirmedCompromise(ip, user, ts) {
   if (!consistent) return;
 
   const alertType = "Confirmed Account Compromise (Multi-stage)";
-  // Dedup: at least horizon, but respect user setting too
   const cooldownMs = Math.max(horizonMs, settings.dedupSeconds * 1000);
   if (!cooldownOk(alertType, ip, user, ts, cooldownMs)) return;
 
@@ -140,12 +131,7 @@ function maybeCorrelateConfirmedCompromise(ip, user, ts) {
   upsertInvestigation(ip, alert);
 }
 
-// =======================
-// DETECTORS ("TOOLS")
-// =======================
-
-// 1) Recon / port scanning suspected
-function reconDetector(newEvents) {
+function reconDetector(newEvents) { // detect reconnaissance via net_conn_attempt events
   const WINDOW_MS = settings.windowSeconds * 1000;
   const DISTINCT_PORTS_THRESH = Math.max(2, Math.min(50, settings.reconConnAttempts));
 
@@ -155,7 +141,6 @@ function reconDetector(newEvents) {
     const record = state.reconByIp.get(e.ip) || { ports: new Map() };
     record.ports.set(String(e.meta?.port ?? "unknown"), e.ts);
 
-    // prune ports older than window
     const cutoff = e.ts - WINDOW_MS;
     for (const [p, ts] of record.ports.entries()) {
       if (ts < cutoff) record.ports.delete(p);
@@ -188,10 +173,10 @@ function reconDetector(newEvents) {
   }
 }
 
-// 2) Brute force / credential stuffing
-function bruteForceDetector(newEvents) {
+function bruteForceDetector(newEvents) { // detect brute-force via auth_fail events
   const WINDOW_MS = settings.windowSeconds * 1000;
   const THRESH = settings.bruteForceFails;
+  const LOW_THRESH = 4;
 
   for (const e of newEvents) {
     if (e.type !== "auth_fail") continue;
@@ -201,6 +186,29 @@ function bruteForceDetector(newEvents) {
 
     pruneOld(arr, e.ts - WINDOW_MS);
     state.authFailsByIp.set(e.ip, arr);
+
+    if (arr.length >= LOW_THRESH && arr.length < THRESH) {
+      const alertType = "Password Guessing Activity";
+      const cooldownMs = Math.max(25_000, Math.floor(settings.dedupSeconds * 1000 * 0.75));
+      if (!cooldownOk(alertType, e.ip, e.user, e.ts, cooldownMs)) continue;
+
+      const explanation =
+        `Observed ${arr.length} failed logins from IP ${e.ip} within ${settings.windowSeconds} seconds. ` +
+        `This is below the brute-force threshold (${THRESH}) but may indicate early password guessing against account ${e.user}.`;
+
+      const alert = makeAlert({
+        ts: e.ts,
+        ip: e.ip,
+        user: e.user,
+        type: alertType,
+        severity: "LOW",
+        explanation,
+      });
+
+      state.alerts.push(alert);
+      upsertInvestigation(e.ip, alert);
+      continue;
+    }
 
     if (arr.length < THRESH) continue;
 
@@ -229,8 +237,7 @@ function bruteForceDetector(newEvents) {
   }
 }
 
-// 3) Anomalous login source (success from attacker / non-home context)
-function anomalousLoginDetector(newEvents) {
+function anomalousLoginDetector(newEvents) { // detect anomalous logins via auth_success events
   for (const e of newEvents) {
     if (e.type !== "auth_success") continue;
     if (!e.meta?.attack) continue;
@@ -260,10 +267,10 @@ function anomalousLoginDetector(newEvents) {
   }
 }
 
-// 4) Sensitive file access spike
-function sensitiveFileDetector(newEvents) {
+function sensitiveFileDetector(newEvents) { // detect sensitive file access via file_read_sensitive events
   const WINDOW_MS = settings.windowSeconds * 1000;
-  const THRESH = settings.sensitiveReads;
+  const HIGH_THRESH = settings.sensitiveReads;
+  const MED_THRESH = Math.max(2, Math.floor(HIGH_THRESH / 2));
 
   for (const e of newEvents) {
     if (e.type !== "file_read_sensitive") continue;
@@ -275,37 +282,64 @@ function sensitiveFileDetector(newEvents) {
     pruneOld(arr, e.ts - WINDOW_MS);
     state.sensitiveReadsByIp.set(e.ip, arr);
 
-    if (arr.length < THRESH) continue;
+    const n = arr.length;
 
-    const alertType = "Sensitive File Access Pattern";
-    const cooldownMs = Math.max(45_000, settings.dedupSeconds * 1000);
-    if (!cooldownOk(alertType, e.ip, e.user, e.ts, cooldownMs)) continue;
+    if (n >= HIGH_THRESH) {
+      const alertType = "Sensitive File Access Pattern";
+      if (!cooldownOk(alertType, e.ip, e.user, e.ts, settings.dedupSeconds * 1000)) continue;
 
-    const explanation =
-      `Observed ${arr.length} sensitive file reads from IP ${e.ip} within ${settings.windowSeconds} seconds ` +
-      `(threshold=${THRESH}). In combination with attack-tagged traffic, this suggests post-compromise collection activity.`;
+      const explanation =
+        `Observed ${n} sensitive file reads from IP ${e.ip} within ${settings.windowSeconds}s (threshold=${HIGH_THRESH}). ` +
+        `In combination with attack-tagged traffic, this suggests post-compromise collection activity.`;
 
-    const alert = makeAlert({
-      ts: e.ts,
-      ip: e.ip,
-      user: e.user,
-      type: alertType,
-      severity: "HIGH",
-      explanation,
-    });
+      const alert = makeAlert({
+        ts: e.ts,
+        ip: e.ip,
+        user: e.user,
+        type: alertType,
+        severity: "HIGH",
+        explanation,
+      });
 
-    state.alerts.push(alert);
-    upsertInvestigation(e.ip, alert);
+      state.alerts.push(alert);
+      upsertInvestigation(e.ip, alert);
 
-    markStage(e.ip, e.user, "fileSpikeTs", e.ts);
-    maybeCorrelateConfirmedCompromise(e.ip, e.user, e.ts);
+      markStage(e.ip, e.user, "fileSpikeTs", e.ts);
+      maybeCorrelateConfirmedCompromise(e.ip, e.user, e.ts);
+      continue;
+    }
+
+    if (n >= MED_THRESH) {
+      const alertType = "Elevated Sensitive File Reads";
+      if (!cooldownOk(alertType, e.ip, e.user, e.ts, 75_000)) continue;
+
+      const explanation =
+        `Observed ${n} sensitive file reads from IP ${e.ip} within ${settings.windowSeconds}s. ` +
+        `This is below the escalation threshold but indicates suspicious collection behaviour.`;
+
+      const alert = makeAlert({
+        ts: e.ts,
+        ip: e.ip,
+        user: e.user,
+        type: alertType,
+        severity: "MEDIUM",
+        explanation,
+      });
+
+      state.alerts.push(alert);
+      upsertInvestigation(e.ip, alert);
+
+      markStage(e.ip, e.user, "fileSpikeTs", e.ts);
+      maybeCorrelateConfirmedCompromise(e.ip, e.user, e.ts);
+    }
   }
 }
 
-// 5) Exfiltration burst (bytes out)
-function exfilDetector(newEvents) {
-  const WINDOW_MS = settings.windowSeconds * 1000;
-  const BYTES_THRESH = settings.exfilBytes;
+
+function exfilDetector(newEvents) { // detect data exfiltration via net_bytes_out events
+  const WINDOW_MS = 30_000;
+  const HIGH_BYTES = settings.exfilBytes;
+  const MED_BYTES = Math.floor(HIGH_BYTES * 0.5);
 
   for (const e of newEvents) {
     if (e.type !== "net_bytes_out") continue;
@@ -318,39 +352,59 @@ function exfilDetector(newEvents) {
     state.exfilByIp.set(e.ip, record);
 
     const sum = record.items.reduce((acc, it) => acc + it.bytes, 0);
-    if (sum < BYTES_THRESH) continue;
 
-    const alertType = "Possible Data Exfiltration";
-    const cooldownMs = Math.max(60_000, settings.dedupSeconds * 1000);
-    if (!cooldownOk(alertType, e.ip, e.user, e.ts, cooldownMs)) continue;
+    if (sum >= HIGH_BYTES) {
+      const alertType = "Possible Data Exfiltration";
+      if (!cooldownOk(alertType, e.ip, e.user, e.ts, settings.dedupSeconds * 1000)) continue;
 
-    const explanation =
-      `Outbound transfer volume from IP ${e.ip} reached ~${sum.toLocaleString()} bytes in ` +
-      `${settings.windowSeconds} seconds (threshold=${BYTES_THRESH.toLocaleString()}). ` +
-      `This resembles data exfiltration following compromise.`;
+      const explanation =
+        `Outbound transfer volume from IP ${e.ip} reached ~${sum.toLocaleString()} bytes in 30 seconds ` +
+        `(threshold=${HIGH_BYTES.toLocaleString()}). This resembles data exfiltration following compromise.`;
 
-    const alert = makeAlert({
-      ts: e.ts,
-      ip: e.ip,
-      user: e.user,
-      type: alertType,
-      severity: "CRITICAL",
-      explanation,
-    });
+      const alert = makeAlert({
+        ts: e.ts,
+        ip: e.ip,
+        user: e.user,
+        type: alertType,
+        severity: "CRITICAL",
+        explanation,
+      });
 
-    state.alerts.push(alert);
-    upsertInvestigation(e.ip, alert);
+      state.alerts.push(alert);
+      upsertInvestigation(e.ip, alert);
 
-    markStage(e.ip, e.user, "exfilSpikeTs", e.ts);
-    maybeCorrelateConfirmedCompromise(e.ip, e.user, e.ts);
+      markStage(e.ip, e.user, "exfilSpikeTs", e.ts);
+      maybeCorrelateConfirmedCompromise(e.ip, e.user, e.ts);
+      continue;
+    }
+
+    if (sum >= MED_BYTES) {
+      const alertType = "Suspicious Data Transfer Volume";
+      if (!cooldownOk(alertType, e.ip, e.user, e.ts, 90_000)) continue;
+
+      const explanation =
+        `Outbound transfer volume from IP ${e.ip} reached ~${sum.toLocaleString()} bytes in 30 seconds ` +
+        `(alerting at ${MED_BYTES.toLocaleString()} bytes, below exfil threshold). This may represent early staging or partial exfiltration.`;
+
+      const alert = makeAlert({
+        ts: e.ts,
+        ip: e.ip,
+        user: e.user,
+        type: alertType,
+        severity: "MEDIUM",
+        explanation,
+      });
+
+      state.alerts.push(alert);
+      upsertInvestigation(e.ip, alert);
+
+      markStage(e.ip, e.user, "exfilSpikeTs", e.ts);
+      maybeCorrelateConfirmedCompromise(e.ip, e.user, e.ts);
+    }
   }
 }
 
-// =======================
-// AGENT LOOP STEP
-// =======================
-
-export function agentStep(newEvents) {
+export function agentStep(newEvents) { // process new events through detectors
   state.events.push(...newEvents);
   if (state.events.length > 4000) state.events.splice(0, 900);
 
@@ -360,11 +414,10 @@ export function agentStep(newEvents) {
   sensitiveFileDetector(newEvents);
   exfilDetector(newEvents);
 
-  // Bound output sizes
   if (state.alerts.length > 600) state.alerts.splice(0, 150);
   if (state.investigations.length > 80) state.investigations.splice(0, 20);
 }
 
-export function getAgentState() {
+export function getAgentState() { // retrieve current agent state
   return state;
 }

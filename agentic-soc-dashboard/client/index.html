@@ -8,10 +8,9 @@
 </head>
 
 <body>
-  <!-- TOP BAR -->
   <header class="topbar">
     <div>
-      <div class="brand-title">Security Operations</div>
+      <div class="brand-title">Security Operations Centre Simulation - By AW</div>
       <div class="brand-sub">Agentic SOC Dashboard</div>
     </div>
 
@@ -21,35 +20,28 @@
     </div>
   </header>
 
-  <!-- APP SHELL -->
   <div class="app">
+    <aside class="sidebar no-icons" aria-label="Primary navigation">
+      <div class="sidebar-inner">
+        <nav class="nav">
+          <a class="nav-item" href="#overview" data-route="overview">Overview</a>
+          <a class="nav-item" href="#alerts" data-route="alerts">Alerts</a>
+          <a class="nav-item" href="#investigations" data-route="investigations">Investigations</a>
+          <a class="nav-item" href="#settings" data-route="settings">Settings</a>
+        </nav>
 
-    <!-- SIDEBAR -->
-    <aside class="sidebar">
-      <nav class="nav">
-        <a class="nav-item" href="#overview" data-route="overview">Overview</a>
-        <a class="nav-item" href="#alerts" data-route="alerts">Alerts</a>
-        <a class="nav-item" href="#investigations" data-route="investigations">Investigations</a>
-        <a class="nav-item" href="#settings" data-route="settings">Settings</a>
-      </nav>
-
-      <div class="sidebar-foot muted">
-        SOC simulation · live agent
+        <div class="sidebar-foot muted">
+          SOC simulation · live agent
+        </div>
       </div>
     </aside>
 
-    <!-- MAIN CONTENT -->
     <main class="content">
-
-      <!-- ================= OVERVIEW ================= -->
       <section id="page-overview" class="page active">
         <section class="grid">
-
-          <!-- KPI CARD -->
           <div class="card kpis">
-            <div class="card-head">
+            <div class="card-head tight">
               <div class="card-title">Alert Severity</div>
-              <div class="muted">Totals update from the agent state in real time.</div>
             </div>
 
             <div class="kpi-row">
@@ -72,7 +64,6 @@
             </div>
           </div>
 
-          <!-- ALERTS (TOP LEFT) -->
           <div class="card alerts-card" id="card-alerts">
             <div class="card-head">
               <div class="card-title">Alerts</div>
@@ -81,7 +72,6 @@
             <div id="alerts" class="alerts"></div>
           </div>
 
-          <!-- THREAT TREND (TOP RIGHT) -->
           <div class="card chart-card" id="card-threat">
             <div class="card-head">
               <div class="card-title">Threat Activity Trend</div>
@@ -92,7 +82,6 @@
             <svg id="trendThreat" class="trend-svg"></svg>
           </div>
 
-          <!-- INVESTIGATIONS (BOTTOM LEFT) -->
           <div class="card investigations-card" id="card-investigations">
             <div class="card-head">
               <div class="card-title">Investigations</div>
@@ -114,20 +103,16 @@
             </div>
           </div>
 
-          <!-- BASELINE TREND (BOTTOM RIGHT) -->
           <div class="card chart-card" id="card-baseline">
             <div class="card-head">
               <div class="card-title">Baseline Auth Activity</div>
               <div class="muted">Home-IP auth success volume, binned per minute</div>
             </div>
-
             <svg id="trendBaseline" class="trend-svg"></svg>
           </div>
-
         </section>
       </section>
 
-      <!-- ================= ALERTS PAGE ================= -->
       <section id="page-alerts" class="page">
         <div class="page-head">
           <div>
@@ -137,11 +122,9 @@
         </div>
 
         <div class="alerts-layout">
-          <!-- LEFT: TABLE -->
-          <div class="card">
-            <div class="alerts-controls">
+          <div class="card alerts-left">
+            <div class="alerts-controls compact">
               <input id="alertsSearch" class="input" placeholder="Search IP, user, type, explanation..." />
-
               <select id="alertsSeverity" class="select">
                 <option value="ALL">All severities</option>
                 <option value="CRITICAL">Critical</option>
@@ -149,7 +132,6 @@
                 <option value="MEDIUM">Medium</option>
                 <option value="LOW">Low</option>
               </select>
-
               <select id="alertsSort" class="select">
                 <option value="NEWEST" selected>Newest first</option>
                 <option value="OLDEST">Oldest first</option>
@@ -172,28 +154,18 @@
                 </thead>
                 <tbody id="alertsTableBody"></tbody>
               </table>
-            </div>
-
-            <div class="muted" style="margin-top:10px;">
-              Tip: click a row to view full details.
-            </div>
-          </div>
-
-          <!-- RIGHT: DETAILS -->
-          <div class="card" id="alertDetailsCard">
+            </div> </div> <div class="card alerts-right" id="alertDetailsCard">
             <div class="card-head">
               <div class="card-title">Alert details</div>
               <div class="muted" id="alertDetailsMeta">Select an alert</div>
             </div>
-
             <div id="alertDetails" class="details">
-              <div class="muted">No alert selected.</div>
+              <div class="muted">No alert selected</div>
             </div>
           </div>
         </div>
       </section>
 
-      <!-- ================= INVESTIGATIONS PAGE ================= -->
       <section id="page-investigations" class="page">
         <div class="page-head">
           <div>
@@ -203,11 +175,9 @@
         </div>
 
         <div class="investigations-layout">
-          <!-- LEFT: QUEUE -->
           <div class="card">
-            <div class="alerts-controls">
+            <div class="alerts-controls compact">
               <input id="invSearch" class="input" placeholder="Search IP, victims, title..." />
-
               <select id="invSeverity" class="select">
                 <option value="ALL">All severities</option>
                 <option value="CRITICAL">Critical</option>
@@ -215,7 +185,6 @@
                 <option value="MEDIUM">Medium</option>
                 <option value="LOW">Low</option>
               </select>
-
               <select id="invStatus" class="select">
                 <option value="ALL" selected>All statuses</option>
                 <option value="OPEN">Open</option>
@@ -223,7 +192,6 @@
                 <option value="CONTAINED">Contained</option>
                 <option value="CLOSED">Closed</option>
               </select>
-
               <select id="invSort" class="select">
                 <option value="LAST_SEEN" selected>Last seen</option>
                 <option value="CREATED">Created</option>
@@ -246,28 +214,18 @@
                 </thead>
                 <tbody id="invTableBody"></tbody>
               </table>
-            </div>
-
-            <div class="muted" style="margin-top:10px;">
-              Tip: click a case to view full campaign details.
-            </div>
-          </div>
-
-          <!-- RIGHT: DETAILS -->
-          <div class="card" id="invDetailsCard">
+            </div> </div> <div class="card" id="invDetailsCard">
             <div class="card-head">
               <div class="card-title">Investigation details</div>
               <div class="muted" id="invDetailsMeta">Select a case</div>
             </div>
-
             <div id="invDetails" class="details">
-              <div class="muted">No investigation selected.</div>
+              <div class="muted">No investigation selected</div>
             </div>
           </div>
         </div>
       </section>
 
-      <!-- ================= SETTINGS PAGE ================= -->
       <section id="page-settings" class="page">
         <div class="page-head">
           <div>
@@ -276,24 +234,20 @@
           </div>
         </div>
 
-        <div class="settings-layout">
+        <div class="settings-layout compact">
           <div class="card">
-            <div class="card-head">
+            <div class="card-head tight">
               <div class="card-title">Detection policy</div>
-              <div class="muted">These parameters affect future detections (not historical alerts).</div>
+              <div class="muted">Applies to future detections</div>
             </div>
 
-            <div class="settings-grid">
-
+            <div class="settings-grid two-col">
               <div class="setting">
                 <div class="setting-top">
                   <div class="setting-label">Rolling analysis window</div>
                   <div class="setting-value"><span id="valWindow">60</span>s</div>
                 </div>
-                <div class="slider-row">
-                  <input id="setWindow" type="range" min="15" max="300" step="5" />
-                </div>
-                <div class="muted">How far back the agent looks when correlating events.</div>
+                <input id="setWindow" type="range" min="15" max="300" step="5" />
               </div>
 
               <div class="setting">
@@ -301,56 +255,40 @@
                   <div class="setting-label">Dedup cooldown</div>
                   <div class="setting-value"><span id="valDedup">20</span>s</div>
                 </div>
-                <div class="slider-row">
-                  <input id="setDedup" type="range" min="0" max="120" step="5" />
-                </div>
-                <div class="muted">Prevents repeating the same alert too frequently.</div>
+                <input id="setDedup" type="range" min="0" max="120" step="5" />
               </div>
 
               <div class="setting">
                 <div class="setting-top">
                   <div class="setting-label">Brute-force threshold</div>
-                  <div class="setting-value"><span id="valBrute">8</span> fails</div>
+                  <div class="setting-value"><span id="valBrute">8</span></div>
                 </div>
-                <div class="slider-row">
-                  <input id="setBrute" type="range" min="3" max="25" step="1" />
-                </div>
-                <div class="muted">Auth failures within the window before brute-force suspicion.</div>
+                <input id="setBrute" type="range" min="3" max="25" step="1" />
               </div>
 
               <div class="setting">
                 <div class="setting-top">
                   <div class="setting-label">Recon threshold</div>
-                  <div class="setting-value"><span id="valRecon">6</span> attempts</div>
+                  <div class="setting-value"><span id="valRecon">6</span></div>
                 </div>
-                <div class="slider-row">
-                  <input id="setRecon" type="range" min="3" max="25" step="1" />
-                </div>
-                <div class="muted">Connection attempts / probing before recon suspicion.</div>
+                <input id="setRecon" type="range" min="3" max="25" step="1" />
               </div>
 
               <div class="setting">
                 <div class="setting-top">
                   <div class="setting-label">Sensitive reads threshold</div>
-                  <div class="setting-value"><span id="valReads">4</span> reads</div>
+                  <div class="setting-value"><span id="valReads">4</span></div>
                 </div>
-                <div class="slider-row">
-                  <input id="setReads" type="range" min="1" max="20" step="1" />
-                </div>
-                <div class="muted">Sensitive file reads within the window before escalation.</div>
+                <input id="setReads" type="range" min="1" max="20" step="1" />
               </div>
 
               <div class="setting">
                 <div class="setting-top">
                   <div class="setting-label">Exfil threshold</div>
-                  <div class="setting-value"><span id="valExfil">300000</span> bytes</div>
+                  <div class="setting-value"><span id="valExfil">300000</span></div>
                 </div>
-                <div class="slider-row">
-                  <input id="setExfil" type="range" min="50000" max="1000000" step="50000" />
-                </div>
-                <div class="muted">Outbound bytes within the window before exfil suspicion.</div>
+                <input id="setExfil" type="range" min="50000" max="1000000" step="50000" />
               </div>
-
             </div>
 
             <div class="settings-actions">
@@ -361,14 +299,10 @@
           </div>
         </div>
       </section>
-
     </main>
   </div>
 
-  <!-- D3 -->
   <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
-
-  <!-- APP ENTRY -->
   <script type="module" src="./main.js"></script>
 </body>
 </html>

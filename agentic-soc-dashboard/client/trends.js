@@ -1,10 +1,4 @@
-// client/trends.js
-// Clean, stable line-based trend charts
-// - Threat Activity Trend: attack-tagged events (20s bins)
-// - Baseline Auth Activity: home-IP auth_success (20s bins)
-// - Drops final partial bin (<50%) to avoid false dips
-
-function makeBins({ start, end, binMs }) {
+function makeBins({ start, end, binMs }) { // create time bins
   const bins = [];
   for (let t = start; t < end; t += binMs) {
     bins.push({ t, v: 0 });
@@ -12,12 +6,12 @@ function makeBins({ start, end, binMs }) {
   return bins;
 }
 
-function binIndex(ts, start, binMs, nBins) {
+function binIndex(ts, start, binMs, nBins) { // get index of bin for timestamp ts
   const idx = Math.floor((ts - start) / binMs);
   return idx >= 0 && idx < nBins ? idx : -1;
 }
 
-function renderLineChart(svgId, points, opts = {}) {
+function renderLineChart(svgId, points, opts = {}) { // render line chart in SVG
   const svg = d3.select(`#${svgId}`);
   const node = svg.node();
 
@@ -46,7 +40,6 @@ function renderLineChart(svgId, points, opts = {}) {
     .nice()
     .range([height - padding.bottom, padding.top]);
 
-  // Gridlines
   svg
     .append("g")
     .selectAll("line")
@@ -59,7 +52,6 @@ function renderLineChart(svgId, points, opts = {}) {
     .attr("y1", (d) => y(d))
     .attr("y2", (d) => y(d));
 
-  // Axes
   const fmt = d3.timeFormat("%H:%M:%S");
 
   svg
@@ -72,7 +64,6 @@ function renderLineChart(svgId, points, opts = {}) {
     .attr("transform", `translate(${padding.left},0)`)
     .call(d3.axisLeft(y).ticks(4));
 
-  // Reference line (baseline mean)
   if (opts.referenceLine !== undefined) {
     svg
       .append("line")
@@ -121,7 +112,7 @@ function renderLineChart(svgId, points, opts = {}) {
     .attr("fill", "rgba(230,237,243,0.85)");
 }
 
-function setThreatPressureLine({ threatNow, baseNow }) {
+function setThreatPressureLine({ threatNow, baseNow }) { // update threat pressure display
   const el = document.getElementById("threatPressure");
   if (!el) return;
 
@@ -137,8 +128,8 @@ function setThreatPressureLine({ threatNow, baseNow }) {
 export function renderTrends(events) {
   const now = Date.now();
 
-  const BIN_MS = 20_000; // ✅ 20 second bins
-  const WINDOW_MS = 4 * 60_000; // 4 minutes visible
+  const BIN_MS = 20_000;
+  const WINDOW_MS = 4 * 60_000;
 
   const start = now - WINDOW_MS;
   const end = now;
@@ -160,7 +151,6 @@ export function renderTrends(events) {
     }
   }
 
-  // Drop final bin if <50% complete
   const elapsed = (now - start) % BIN_MS;
   if (elapsed / BIN_MS < 0.5) {
     threatBins.pop();
