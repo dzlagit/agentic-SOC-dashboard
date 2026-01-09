@@ -1,6 +1,6 @@
 # Agentic SOC Dashboard (Cybersecurity Simulation)
 
-A high-fidelity Security Operations Centre (SOC) Simulation and SOAR (Security Orchestration, Automation, and Response) platform. This application streams live enterprise telemetry and utilizes a stateful detection engine to identify multi-stage attacks, manage investigations, and enforce security policies.
+A high-fidelity Security Operations Centre (SOC) Simulation and SOAR (Security Orchestration, Automation, and Response) platform. This application streams live enterprise telemetry and utilises a stateful detection engine to identify multi-stage attacks, manage investigations, and enforce security policies.
 
 
 
@@ -15,17 +15,17 @@ Unlike static dashboards, this project features a stateful correlation engine th
 ### 2. Interactive SOC Workflow
 * **Incident Triage:** A master-detail interface for alerts including severity filtering, search, and sorting.
 * **Investigation Management:** Automatically groups related alerts by attacker IP into "Campaigns," allowing analysts to track the entire lifecycle of an intrusion.
-* **SOAR Integration:** Real-time "Response" capabilities—analysts can block IPs or disable users directly from the dashboard, which synchronizes with the backend policy engine.
+* **SOAR Integration:** Real-time "Response" capabilities—analysts can block IPs or disable users directly from the dashboard, which synchronises with the backend policy engine.
 
-### 3. Real-Time Data Visualization
-* **D3.js Analytics:** Live-updating trend charts visualizing "Threat Pressure" (attack volume vs. baseline activity).
+### 3. Real-Time Data Visualisation
+* **D3.js Analytics:** Live-updating trend charts visualising "Threat Pressure" (attack volume vs. baseline activity).
 * **KPI Tracking:** Real-time counters for Critical, High, Medium, and Low severity incidents.
 
 
 
 ## Tech Stack
 
-* **Frontend:** Vanilla JavaScript (ES6+ Modules), D3.js for data visualization, CSS3 Grid/Flexbox.
+* **Frontend:** Vanilla JavaScript (ES6+ Modules), D3.js for data visualisation, CSS3 Grid/Flexbox.
 * **Backend:** Node.js & Express (Telemetry & Policy API).
 * **State Management:** Custom client-side state machine with render-freeze protection during user interaction.
 
@@ -48,3 +48,8 @@ Unlike static dashboards, this project features a stateful correlation engine th
 2. **Start the Telemetry Server:**
    ```bash
    node server.js
+The server will run on http://localhost:3001. 
+3. Launch the Dashboard: Open index.html in any modern web browser.
+
+### Configuration
+The dashboard includes a Settings panel where you can tune the detection sensitivity in real-time. Adjusting thresholds for brute-force attempts or exfiltration bytes will immediately alter how the "Agent" promotes telemetry to alerts.
